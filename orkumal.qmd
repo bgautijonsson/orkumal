@@ -334,3 +334,101 @@ anim_save(filename = "throun_jardefna_framleidslu.mp4", animation = p_vid)
 ```
 
 
+# Raða eftir jarðefnaeldsneyti og gdp
+
+## 2018
+
+```{r, fig.width = 10, fig.asp = 1}
+p <- d |> 
+    filter(year == 2018) |> 
+    select(country, fossil_energy_per_capita, gdp_per_capita) |> 
+    drop_na() |> 
+    mutate(fossil_per_gdp = fossil_energy_per_capita / gdp_per_capita,
+           country = fct_reorder(country, fossil_per_gdp)) |> 
+    ggplot(aes(fossil_per_gdp, country,
+               fill = country == "Iceland")) +
+    geom_col() +
+    scale_fill_manual(values = c("#969696", "#4292c6")) +
+    theme_half_open() +
+    theme(legend.position = "none") +
+    coord_cartesian(expand = FALSE) +
+    labs(x = "Notkun jarðefnaeldsneytis (kWh) deilt með landsframleiðslu ($)",
+         y = NULL,
+         title = "Röðun landa eftir hlutfalli jarðefnaeldsneytis (kWh) og landsframleiðslu ($) árið 2018",
+         subtitle = "Jarðefnaeldsneyti er hér olía, gas og kol",
+         caption = "Kóði og gögn: https://github.com/bgautijonsson/orkumal")
+
+ggsave(plot = p, filename = "ordered_fossil.png",
+       width = 8, height = 8, scale = 1.7, bg = "white")
+```
+
+## Þróun
+
+```{r}
+countries <- c("Germany", "Iceland", "India", "New Zealand", "Norway", "Sweden")
+icelandic <- c(
+    "Germany" = "Þýskaland", 
+    "Iceland" = "Ísland", 
+    "India" = "Indland", 
+    "New Zealand" = "Nýja Sjáland",
+    "Norway" = "Noregur",
+    "Sweden" = "Svíþjóð")
+
+
+plot_dat <- d |> 
+    select(year, country, fossil_energy_per_capita, gdp_per_capita) |> 
+    drop_na() |> 
+    mutate(fossil_per_gdp = fossil_energy_per_capita / gdp_per_capita) |> 
+    filter(year >= 2000) |> 
+    mutate(alpha = country %in% countries,
+           colour = fct_other(country,
+                              keep = countries,
+                              other_level = "Other"),
+           y = fossil_per_gdp,
+           y = case_when(country == "Iceland" ~ y + 0,
+                         country == "New Zealand" ~ y - 0.05,
+                         country == "India" ~ y + 0.05,
+                         country == "Sweden" ~ y + 0.02,
+                         country == "Norway" ~ y - 0.02,
+                         TRUE ~ y))
+
+p <- plot_dat |> 
+    ggplot(aes(year, fossil_per_gdp,
+               colour = colour,
+               alpha = alpha)) +
+    geom_line(aes(group = country, size = alpha)) +
+    geom_text(data = plot_dat |> 
+                  filter(country %in% countries,
+                         year == max(year)) |> 
+                  mutate(country = icelandic[country]),
+              aes(y = y, label = country),
+              hjust = 0, nudge_x = 0.1, size = 4) +
+    geom_rangeframe(colour = "black", alpha = 1) +
+    scale_x_continuous(expand = expansion(),
+                       limits = c(2000, 2018.5),
+                       breaks = c(2000, 2005, 2010, 2015, 2018)) +
+    scale_y_continuous() +
+    scale_colour_manual(values = c("#ff7f00", 
+                                   "#377eb8",
+                                   "#4daf4a",
+                                   "black", 
+                                   "#e41a1c", 
+                                   "#ffed6f",
+                                   "grey")) +
+    scale_alpha_manual(values = c(0.3, 1)) +
+    scale_size_manual(values = c(0.5, 1)) +
+    theme_tufte() +
+    theme(legend.position = "none") +
+    coord_cartesian(ylim = c(0, 2),
+                    xlim = c(2000, 2020.5),
+                    expand = F) +
+    labs(x = NULL,
+         y = NULL,
+         title = "Þróun hlutfalls jarðefnaeldsneytis (kWh) og landsframleiðslu ($) árin 2000 - 2018",
+         subtitle = "Jarðefnaeldsneyti er hér olía, gas og kol",
+         caption = "Kóði og gögn: https://github.com/bgautijonsson/orkumal")
+
+ggsave(plot = p, filename = "throun_fossil.png",
+       width = 8, height = 0.5 * 8, scale = 1.3, bg = "white")
+```
+
