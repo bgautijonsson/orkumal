@@ -49,10 +49,12 @@ d <- read_csv("https://raw.githubusercontent.com/owid/energy-data/master/owid-en
            energy_per_capita, per_capita_electricity,
            oil_prod_per_capita,
            greenhouse_gas_emissions,
-           carbon_intensity_elec) |> 
+           carbon_intensity_elec,
+           low_carbon_energy_per_capita) |> 
     mutate(gdp_per_capita = gdp / population,
            greenhouse_per_capita = greenhouse_gas_emissions / population * 1e6 * 1e5,
-           gdp_per_greenhouse = gdp / greenhouse_gas_emissions)
+           gdp_per_greenhouse = gdp / greenhouse_gas_emissions,
+           high_carbon_energy_per_capita = energy_per_capita - low_carbon_energy_per_capita)
 ```
 
 # Orka og framleiðsla
@@ -225,32 +227,110 @@ p <- d |>
     transition_time(as.integer(year)) +
     ease_aes("cubic-in-out")
 
-p_vid <- animate(p, width = 12, height = 0.5 * 12, unit = "in", res = 150, fps = 25, duration = 10,
+p_vid <- animate(p, width = 12, height = 0.5 * 12, unit = "in", res = 150, 
+                 fps = 25, duration = 10,
                  renderer = ffmpeg_renderer(format = "mp4"))
 
-anim_save(filename = "throun_co2_framleidslu.mp4", animation = p_vid)
+anim_save(filename = "throun_grodurhusa_framleidslu.mp4", animation = p_vid)
 ```
 
+
+# Jarðefnaeldsneyti og framleiðsla
+
 ```{r}
-# m <- lm(log(gdp_per_capita) ~ log(renewables_share_energy), data = d |> filter(year == 2018))
-d |> 
+start <- d |> 
+    filter(year >= 1990, fossil_energy_per_capita > 0) |> 
+    pull(fossil_energy_per_capita) |>
+    min(na.rm = T)
+end <- d |>
+    filter(year >= 1990, fossil_energy_per_capita > 0) |> 
+    pull(fossil_energy_per_capita) |> 
+    max(na.rm = T)
+
+min_gdp <- d |> 
     filter(year >= 1990) |> 
-    select(year, country, gdp_per_capita, gdp_per_greenhouse, greenhouse_per_capita,
-           carbon_intensity_elec) |> 
+    pull(gdp_per_capita) |> 
+    min(na.rm = T)
+max_gdp <- d |> 
+    filter(year >= 1990) |> 
+    pull(gdp_per_capita) |>
+    max(na.rm = T)
+
+plot_dat <- crossing(fossil_energy_per_capita = seq(log(start),
+                                                 log(end), 
+                                                 length = 500) |> exp(),
+                     ratio = c(1/4, 1/2, 1, 2, 4)) |> 
+    mutate(gdp_per_capita = ratio * fossil_energy_per_capita) |> 
+    filter(gdp_per_capita <= max_gdp * 1.1,
+           gdp_per_capita >= min_gdp)
+
+add_preds <- function(data, ...) {
+    m <- lm(log(gdp_per_capita) ~ log(fossil_energy_per_capita), data = data)
+    data$pred <- exp(predict(m))
+    
+    data
+}
+
+
+p <- d |> 
+    select(gdp_per_capita, fossil_energy_per_capita, country, year) |> 
     drop_na() |> 
-    group_by(country) |> 
-    filter(all(greenhouse_per_capita > 0)) |> 
+    filter(year >= 1990, country != "World") |> 
+    group_by(country) |>
+    filter(all(gdp_per_capita > 0), 
+           all(fossil_energy_per_capita > 0),
+           any(year == 1990)) |> 
     ungroup() |> 
-    # mutate(pred = predict(m) |> exp()) |> 
-    ggplot(aes(greenhouse_per_capita * 1e12, gdp_per_capita,
-               colour = (country == "Iceland"))) +
+    group_by(year) |> 
+    group_modify(add_preds) |> 
+    ungroup() |> 
+    ggplot(aes(fossil_energy_per_capita, gdp_per_capita,
+               colour = (country == "Iceland"),
+               size = (country == "Iceland"),
+               alpha = (country == "Iceland"))) +
+    geom_line(
+        data = plot_dat,
+        aes(fossil_energy_per_capita, gdp_per_capita, group = ratio),
+        inherit.aes = FALSE
+    ) +
+    geom_text(data = plot_dat |> 
+                  group_by(ratio) |> 
+                  filter(fossil_energy_per_capita == max(fossil_energy_per_capita)) |> 
+                  ungroup(),
+              aes(x = fossil_energy_per_capita,
+                  y = gdp_per_capita,
+                  label = 1 / ratio),
+              inherit.aes = FALSE, hjust = 0, vjust = 0, 
+              nudge_x = 0.03,
+              nudge_y = 0.03) +
+    geom_line(aes(y = pred), lty = 2, col = "black", size = 1) +
     geom_point() +
-    geom_rangeframe() +
+    # geom_rangeframe() +
     scale_x_log10(labels = label_number(suffix = " kWh", big.mark = ".", decimal.mark = ",")) +
     scale_y_log10(labels = label_number(suffix = "$", big.mark = ".", decimal.mark = ",")) +
-    scale_colour_manual(values = c("grey", "blue")) +
-    theme_tufte() +
-    theme(legend.position = "none") +
+    scale_colour_manual(values = c("#969696", "#4292c6")) +
+    scale_size_manual(values = c(2.5, 4)) +
+    scale_alpha_manual(values = c(0.7, 1)) +
+    theme_half_open(font_size = 12) +
+    theme(legend.position = "none",
+          plot.title = element_markdown(face = "plain")) +
+    labs(x = "Jarðefnaeldsneytisnotkun á mann",
+         y = "Landsframleiðsla á mann",
+         title = "Þróun notkunar jarðefnaeldsneytis og landsframleiðslu á <b style='color:#4292c6'>Íslandi</b> samanborið við <b style='color:#969696'>heiminn</b>",
+         subtitle = str_c("Heilar línur sýna mismunandi hlutföll jarðefnaeldsneytis / landsframleiðslu",
+                          "\n",
+                          "Brotin lína sýnir fylgni stærðanna á heimsvísu",
+                          "\n",
+                          "Ár: {frame_time}"),
+         caption = "Kóði og gögn: https://github.com/bgautijonsson/orkumal") +
     transition_time(as.integer(year)) +
     ease_aes("cubic-in-out")
+
+p_vid <- animate(p, width = 12, height = 0.5 * 12, unit = "in", res = 150, fps = 25,
+                 duration = 15,
+                 renderer = ffmpeg_renderer(format = "mp4"))
+
+anim_save(filename = "throun_jardefna_framleidslu.mp4", animation = p_vid)
 ```
+
+
