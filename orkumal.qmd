@@ -87,7 +87,6 @@ p <- d |>
     drop_na() |> 
     filter(year >= 1980, country != "World") |> 
     group_by(country) |>
-    filter(any(year == 1980)) |>
     ungroup() |> 
     group_by(year) |> 
     group_modify(add_preds) |> 
@@ -112,7 +111,7 @@ p <- d |>
               nudge_x = 0.03,
               nudge_y = 0.03) +
     geom_line(aes(y = pred), lty = 2, col = "black", size = 1) +
-    geom_point() +
+    geom_point(aes(group = country)) +
     # geom_rangeframe() +
     scale_x_log10(labels = label_number(suffix = " kWh", big.mark = ".", decimal.mark = ",")) +
     scale_y_log10(labels = label_number(suffix = "$", big.mark = ".", decimal.mark = ",")) +
@@ -356,7 +355,7 @@ p <- d |>
     labs(x = "Notkun jarðefnaeldsneytis (kWh) deilt með landsframleiðslu ($)",
          y = NULL,
          title = "Röðun landa eftir jarðefnaeldsneyti (kWh) per $ af landsframleiðslu árið 2018",
-         subtitle = "Árið 2018 kostuðu 0.94$ af landsframleiðslu 1 kWh af jarðefnaeldsneyti",
+         subtitle = "Árið 2018 kostaði1$ af landsframleiðslu 0.94 kWh af jarðefnaeldsneyti",
          caption = "Kóði og gögn: https://github.com/bgautijonsson/orkumal")
 
 ggsave(plot = p, filename = "ordered_fossil.png",
